@@ -17,6 +17,7 @@ class Language
     protected $active = null;
     protected $config;
     protected $http_accept_language;
+    protected $lang_in_url = false;
 
     /**
      * Constructor
@@ -81,7 +82,9 @@ class Language
      */
     public function getAvailable()
     {
-        return implode('|', $this->languages);
+        $languagesArray = $this->languages; //Make local copy
+        sort($languagesArray);
+        return implode('|', array_reverse($languagesArray));
     }
 
     /**
@@ -159,12 +162,13 @@ class Language
      */
     public function setActiveFromUri($uri)
     {
-        $regex = '/(\/(' . $this->getAvailable() . ')).*/';
+        $regex = '/(^\/(' . $this->getAvailable() . '))(?:\/.*|$)/i';
 
         // if languages set
         if ($this->enabled()) {
             // try setting from prefix of URL (/en/blah/blah)
             if (preg_match($regex, $uri, $matches)) {
+                $this->lang_in_url = true;
                 $this->active = $matches[2];
                 $uri = preg_replace("/\\" . $matches[1] . "/", '', $matches[0], 1);
 
@@ -198,9 +202,57 @@ class Language
         return $uri;
     }
 
+    /**
+     * Get's a URL prefix based on configuration
+     *
+     * @param null $lang
+     * @return string
+     */
+    public function getLanguageURLPrefix($lang = null)
+    {
+        // if active lang is not passed in, use current active
+        if (!$lang) {
+            $lang = $this->getLanguage();
+        }
+
+        return $this->isIncludeDefaultLanguage($lang) ? '/' . $lang : '';
+    }
+
+    /**
+     * Test to see if language is default and language should be included in the URL
+     *
+     * @param null $lang
+     * @return bool
+     */
+    public function isIncludeDefaultLanguage($lang = null)
+    {
+        // if active lang is not passed in, use current active
+        if (!$lang) {
+            $lang = $this->getLanguage();
+        }
+
+        if ($this->default == $lang && $this->config->get('system.languages.include_default_lang') === false) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    /**
+     * Simple getter to tell if a language was found in the URL
+     *
+     * @return bool
+     */
+    public function isLanguageInUrl()
+    {
+        return (bool) $this->lang_in_url;
+    }
+
 
     /**
      * Gets an array of valid extensions with active first, then fallback extensions
+     *
+     * @param string|null $file_ext
      *
      * @return array
      */
@@ -252,6 +304,8 @@ class Language
                 }
                 $this->fallback_languages = $fallback_languages;
             }
+            // always add english in case a translation doesn't exist
+            $this->fallback_languages[] = 'en';
         }
 
         return $this->fallback_languages;
@@ -276,15 +330,15 @@ class Language
     /**
      * Translate a key and possibly arguments into a string using current lang and fallbacks
      *
-     * @param       $args       first argument is the lookup key value
-     *                          other arguments can be passed and replaced in the translation with sprintf syntax
-     * @param Array $languages
+     * @param mixed $args      The first argument is the lookup key value
+     *                         Other arguments can be passed and replaced in the translation with sprintf syntax
+     * @param array $languages
      * @param bool  $array_support
      * @param bool  $html_out
      *
      * @return string
      */
-    public function translate($args, Array $languages = null, $array_support = false, $html_out = false)
+    public function translate($args, array $languages = null, $array_support = false, $html_out = false)
     {
         if (is_array($args)) {
             $lookup = array_shift($args);
@@ -293,14 +347,13 @@ class Language
             $args = [];
         }
 
-
         if ($this->config->get('system.languages.translations', true)) {
             if ($this->enabled() && $lookup) {
                 if (empty($languages)) {
                     if ($this->config->get('system.languages.translations_fallback', true)) {
                         $languages = $this->getFallbackLanguages();
                     } else {
-                        $languages = (array)$this->getDefault();
+                        $languages = (array)$this->getLanguage();
                     }
                 }
             } else {
@@ -370,8 +423,8 @@ class Language
     /**
      * Lookup the translation text for a given lang and key
      *
-     * @param      $lang lang code
-     * @param      $key  key to lookup with
+     * @param string $lang lang code
+     * @param string $key  key to lookup with
      * @param bool $array_support
      *
      * @return string
@@ -386,6 +439,13 @@ class Language
         return $translation;
     }
 
+    /**
+     * Get the browser accepted languages
+     *
+     * @param array $accept_langs
+     *
+     * @return array
+     */
     public function getBrowserLanguages($accept_langs = [])
     {
         if (empty($this->http_accept_language)) {
@@ -399,9 +459,9 @@ class Language
                 // split $pref again by ';q='
                 // and decorate the language entries by inverted position
                 if (false !== ($i = strpos($pref, ';q='))) {
-                    $langs[substr($pref, 0, $i)] = array((float)substr($pref, $i + 3), -$k);
+                    $langs[substr($pref, 0, $i)] = [(float)substr($pref, $i + 3), -$k];
                 } else {
-                    $langs[$pref] = array(1, -$k);
+                    $langs[$pref] = [1, -$k];
                 }
             }
             arsort($langs);

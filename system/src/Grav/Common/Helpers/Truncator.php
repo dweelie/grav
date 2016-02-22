@@ -66,7 +66,7 @@ class Truncator {
             // We'll only be able to parse HTML5 if it's valid XML
             $doc = new DOMDocument('4.01', 'utf-8');
             $doc->formatOutput = false;
-            $doc->preserveWhitespace = true;
+            $doc->preserveWhiteSpace = true;
             // loadHTML will fail with HTML5 tags (article, nav, etc)
             // so we need to suppress errors and if it fails to parse we
             // retry with the XML parser instead
@@ -118,7 +118,7 @@ class Truncator {
                 list($txt, $nb, $opts) = static::truncateNode($doc, $childNode, $remaining, $opts);
             }
             else if ($childNode->nodeType === XML_TEXT_NODE) {
-                list($txt, $nb, $opts) = static::truncateText($doc, $childNode, $remaining, $opts);
+                list($txt, $nb, $opts) = static::truncateText($childNode, $remaining, $opts);
             } else {
                 $txt = '';
                 $nb  = 0;
@@ -131,7 +131,7 @@ class Truncator {
             $inner .= $txt;
             if ($remaining < 0) {
                 if (static::ellipsable($node)) {
-                    $inner = preg_replace('/(?:[\s\pP]+|(?:&(?:[a-z]+|#[0-9]+);?))*$/', '', $inner).$opts['ellipsis'];
+                    $inner = preg_replace('/(?:[\s\pP]+|(?:&(?:[a-z]+|#[0-9]+);?))*$/u', '', $inner).$opts['ellipsis'];
                     $opts['ellipsis'] = '';
                     $opts['was_truncated'] = true;
                 }
@@ -141,7 +141,7 @@ class Truncator {
         return array($inner, $remaining, $opts);
     }
 
-    protected static function truncateText($doc, $node, $length, $opts)
+    protected static function truncateText($node, $length, $opts)
     {
         $string = $node->textContent;
 
@@ -165,11 +165,12 @@ class Truncator {
             $words = $words[0];
             $count = count($words);
             if ($count <= $length && $length > 0) {
-                return array($xhtml, $count, $opts);
+                return array($string, $count, $opts);
             }
             return array(implode('', array_slice($words, 0, $length)), $count, $opts);
         }
     }
+
     protected static function ellipsable($node)
     {
         return ($node instanceof DOMDocument)
@@ -179,11 +180,15 @@ class Truncator {
 
     protected static function xmlEscape($string)
     {
-        return str_replace('&', '&amp;', $string);
+        $string = str_replace('&', '&amp;', $string);
+        $string = str_replace('<?', '&lt;?', $string);
+        return $string;
     }
 
     protected static function xmlUnescape($string)
     {
-        return str_replace('&amp;', '&', $string);
+        $string = str_replace('&amp;', '&', $string);
+        $string = str_replace('&lt;?', '<?', $string);
+        return $string;
     }
 }
